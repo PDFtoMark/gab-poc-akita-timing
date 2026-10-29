@@ -1,0 +1,11 @@
+name: CI
+on:
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Simulate a failing build (no timing artifact produced)
+        run: |
+          echo "build failed on PR code"
+          exit 1
