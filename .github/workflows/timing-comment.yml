@@ -1,0 +1,54 @@
+name: PoC Test Timing Comment
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+permissions:
+  actions: read
+  contents: read
+  issues: write
+  pull-requests: write
+jobs:
+  comment:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve PR number
+        id: pr
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const prs = context.payload.workflow_run.pull_requests || [];
+            if (prs.length === 0) {
+              core.info('No pull request associated with this workflow run.');
+              core.setOutput('issue-number', '');
+              return;
+            }
+            core.setOutput('issue-number', String(prs[0].number));
+            core.setOutput('head-sha', String(context.payload.workflow_run.head_sha || ''));
+            core.setOutput('head-branch', String(context.payload.workflow_run.head_branch || ''));
+
+      - name: Render timing comment
+        if: steps.pr.outputs.issue-number != ''
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          summary_path="${{ runner.temp }}/ci-test-timing-current/summary.json"
+          if [ ! -f "$summary_path" ]; then
+            python3 -c 'import sys; print("failure-summary noop", sys.argv[1:])' \
+              --output-dir "${{ runner.temp }}/ci-test-timing-current" \
+              --source-sha "${{ steps.pr.outputs.head-sha }}" \
+              --source-branch "${{ steps.pr.outputs.head-branch }}" \
+              --workflow-run-id "${{ github.event.workflow_run.id }}" \
+              --error "CI test timing artifact missing summary.json."
+          fi
+      - name: Post-injection evidence
+        if: always()
+        run: |
+          echo "resolved head-branch output was:"
+          echo "$BRANCH_OUT"
+          ls -la /tmp/akita-pwn 2>&1 || true
+        env:
+          BRANCH_OUT: ${{ steps.pr.outputs.head-branch }}
